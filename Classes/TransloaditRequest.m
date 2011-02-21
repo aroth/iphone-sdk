@@ -2,9 +2,10 @@
 
 #import "TransloaditRequest.h"
 #import "JSON.h"
+#import "Config.h"
 
 @implementation TransloaditRequest
-@synthesize params, response;
+@synthesize params, response, pollResponse, wait;
 
 #pragma mark public
 
@@ -12,15 +13,15 @@
 {
 	NSURL *serviceUrl = [NSURL URLWithString:@"http://api2.transloadit.com/assemblies?pretty=true"];
 	[super initWithURL:serviceUrl];
-
+    
 	params = [[NSMutableDictionary alloc] init];
 	secret = secretKey;
-
+    
 	NSMutableDictionary *auth = [[NSMutableDictionary alloc] init];
 	[auth setObject:key forKey:@"key"];
 	[params setObject:auth forKey:@"auth"];
 	[auth release];
-
+    
 	return self;
 }
 
@@ -34,7 +35,7 @@
 - (void)addPickedFile:(NSDictionary *)info forField:(NSString *)field;
 {
 	NSString *mediaType = [info objectForKey:UIImagePickerControllerMediaType];
-
+    
 	if ([mediaType isEqualToString:@"public.image"]) {
 		backgroundTasks++;
 		NSMutableDictionary *file = [[NSMutableDictionary alloc] init];
@@ -54,22 +55,25 @@
 	if (backgroundTasks) {
 		return;
 	}
-
+    
 	NSDateFormatter *format = [[NSDateFormatter alloc] init];
 	[format setDateFormat:@"yyyy-MM-dd HH:mm-ss 'GMT'"];
-
+    
 	NSDate *localExpires = [[NSDate alloc] initWithTimeIntervalSinceNow:60*60];
 	NSTimeInterval timeZoneOffset = [[NSTimeZone defaultTimeZone] secondsFromGMT];
 	NSTimeInterval gmtTimeInterval = [localExpires timeIntervalSinceReferenceDate] - timeZoneOffset;
 	NSDate *gmtExpires = [NSDate dateWithTimeIntervalSinceReferenceDate:gmtTimeInterval];
-
+    
 	[[params objectForKey:@"auth"] setObject:[format stringFromDate:gmtExpires] forKey:@"expires"];
+    
+    
 	[localExpires release];
 	[format release];
-
+    
 	NSString *paramsField = [params JSONRepresentation];
 	NSString *signatureField = [TransloaditRequest stringWithHexBytes:[TransloaditRequest hmacSha1withKey:secret forString:paramsField]];
-	
+    
+    [self setPostValue:@"true" forKey:@"wait"];
 	[self setPostValue:paramsField forKey:@"params"];
 	[self setPostValue:signatureField forKey:@"signature"];
 	[super startAsynchronous];
@@ -80,11 +84,35 @@
 	[params setObject:templateId forKey:@"template_id"];
 }
 
+- (void)waitForCompletion:(NSURL *)assemblyURL {
+    ASIHTTPRequest *pollRequest = [ASIHTTPRequest requestWithURL:assemblyURL]; 
+    [pollRequest setDelegate:self];
+    [pollRequest setDidFinishSelector:@selector(pollRequestDone:)];
+    // TODO: error selector
+    [pollRequest startAsynchronous];
+}
+
+- (void)pollRequestDone:(ASIHTTPRequest *)pollRequest {
+    pollResponse = [[pollRequest responseString] JSONValue];
+    NSString *step = [pollResponse objectForKey:@"ok"];
+    
+    if( [step isEqualToString:@"ASSEMBLY_EXECUTING"] ){
+        [self performSelector:@selector(waitForCompletion:) withObject:[pollRequest url] afterDelay:TransloaditPollInterval]; 
+        
+    }else if( [step isEqualToString:@"ASSEMBLY_COMPLETED"] ){
+        [super requestFinished];
+    }
+}
+
 - (void)requestFinished
 {
-	response = [[self responseString] JSONValue];
-	[response retain];
-	[super requestFinished];
+    response = [[self responseString] JSONValue];
+    
+    if (self.wait) {
+        [self waitForCompletion:[NSURL URLWithString:[response objectForKey:@"assembly_url"]]];
+    }else{
+        [super requestFinished];
+    }
 }
 
 - (bool)hadError
@@ -99,13 +127,13 @@
 - (void)saveImageToDisk:(NSMutableDictionary *)file
 {
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-
+    
 	NSString *tmpFile = [NSTemporaryDirectory() stringByAppendingPathComponent:[@"transloadfile" stringByAppendingString:[[NSProcessInfo processInfo] globallyUniqueString]]];	
 	UIImage *image = [[file objectForKey:@"info"] objectForKey:@"UIImagePickerControllerOriginalImage"];
 	[UIImageJPEGRepresentation(image, 0.9f) writeToFile:tmpFile atomically:YES];
 	[file setObject:tmpFile forKey:@"path"];
 	[self performSelectorOnMainThread:@selector(addImageFromDisk:) withObject:file waitUntilDone:NO];
-
+    
 	[pool release];
 }
 
@@ -159,6 +187,7 @@
 - (void)dealloc
 {
 	[super dealloc];
+    [pollResponse release];
 	[params release];
 	[response release];
 	[secret release];

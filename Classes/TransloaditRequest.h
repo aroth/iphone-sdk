@@ -33,13 +33,17 @@
 	NSString *secret;
 	NSMutableDictionary *params;
 	NSDictionary *response;
+    NSDictionary *pollResponse;
 	uint uploads;
 	bool backgroundTasks;
 	bool readyToStart;
+    bool wait;
 }
 
+@property bool wait;
 @property(nonatomic, retain) NSMutableDictionary *params;
 @property(nonatomic, retain) NSDictionary *response;
+@property(nonatomic, retain) NSDictionary *pollResponse;
 
 #pragma mark public
 - (id)initWithCredentials:(NSString *)key secret:(NSString *)secret;
@@ -54,5 +58,8 @@
 - (void)addImageFromDisk:(NSMutableDictionary *)file;
 + (NSData *)hmacSha1withKey:(NSString *)key forString:(NSString *)string;
 + (NSString *)stringWithHexBytes:(NSData *)data;
+
+- (void)pollRequestDone:(ASIHTTPRequest *)request;
+- (void)waitForCompletion:(NSURL *)assemblyURL;
 
 @end

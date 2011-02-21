@@ -36,9 +36,9 @@
 - (void)setImageThumbnail:(NSDictionary *)info
 {
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-
+    
 	// sleep(1); // @todo remove before releasing
-
+    
 	UIImage *original = [info objectForKey:UIImagePickerControllerOriginalImage];
 	UIImage *resized = [IphoneSdkViewController imageWithImage:original scaledToSizeWithSameAspectRatio:thumb.frame.size];
 	[thumb performSelectorOnMainThread:@selector(setImage:) withObject:resized waitUntilDone:YES];
@@ -51,39 +51,53 @@
 {
 	spinner.hidden = YES;
 	progressBar.hidden = NO;
-
+    
 	status.text = NSLocalizedString(@"preparing upload", @"");	
-
+    
 	transload = [[TransloaditRequest alloc] initWithCredentials:TransloaditKey secret:TransloaditSecret];
 	[transload setTemplateId:TransloaditTemplateId];
 	[transload addPickedFile:info];
+    [transload setWait:YES]; // aroth
 	[transload setNumberOfTimesToRetryOnTimeout:5];
 	[transload setDelegate:self];
 	[transload setUploadProgressDelegate:self];
 	[transload startAsynchronous];
 }
 
+- (NSURL *)getURLForKeyAndIndex:(NSDictionary *)response withKey:(NSString *)key andIndex:(int)index {
+    NSURL *url = [NSURL URLWithString:[[[[response objectForKey:@"results"] objectForKey:key] objectAtIndex:index] objectForKey:@"url"]];
+    return url;
+}
+
 - (void)requestFinished:(TransloaditRequest *)transloadRequest
 {
+
 	status.hidden = progressBar.hidden = YES;
 	[button setTitle:NSLocalizedString(@"Select File", @"") forState:UIControlStateNormal];
 
-	NSString *responseStatus;
-	if ([transloadRequest hadError]) {
-		responseStatus = [[transloadRequest response] objectForKey:@"error"];
-	} else {
-		responseStatus = [[transloadRequest response] objectForKey:@"ok"];
-	}
-
-	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:responseStatus message:[transloadRequest responseString] delegate:nil cancelButtonTitle:NSLocalizedString(@"Ok", @"") otherButtonTitles:nil];
-
-	[alert show];
-	[alert release];
-	[transload release];
-	transload = nil;
-	
-	// hack to align text on the left
-	((UILabel *)[[alert subviews] objectAtIndex:1]).textAlignment = UITextAlignmentLeft;
+    NSURL *url = [self getURLForKeyAndIndex:transloadRequest.pollResponse withKey:@"image_thumbs_150x113" andIndex:0];
+    
+    [[UIApplication sharedApplication] openURL:url];    
+    
+//	status.hidden = progressBar.hidden = YES;
+//	[button setTitle:NSLocalizedString(@"Select File", @"") forState:UIControlStateNormal];
+//    
+//	NSString *responseStatus;
+//	if ([transloadRequest hadError]) {
+//		responseStatus = [[transloadRequest response] objectForKey:@"error"];
+//	} else {
+//		responseStatus = [[transloadRequest response] objectForKey:@"ok"];
+//	}
+//    
+//	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:responseStatus message:[transloadRequest responseString] delegate:nil cancelButtonTitle:NSLocalizedString(@"Ok", @"") otherButtonTitles:nil];
+//    
+//	[alert show];
+//	[alert release];
+//	[transload release];
+//	transload = nil;
+//	
+//	// hack to align text on the left
+//	((UILabel *)[[alert subviews] objectAtIndex:1]).textAlignment = UITextAlignmentLeft;
 }
 
 - (void)setProgress:(float)currentProgress
@@ -212,7 +226,7 @@
 		[spinner stopAnimating];
 		return;
 	}
-
+    
 	// Pops up the image picker showing al available images and videos
 	thumb.hidden = YES;
 	UIImagePickerController *picker = [[UIImagePickerController alloc] init];
@@ -225,7 +239,7 @@
 - (void) viewDidLoad
 {
 	[button setTitle:NSLocalizedString(@"Select File", @"") forState:UIControlStateNormal];
-
+    
 	if ([TransloaditKey length] == 0 || [TransloaditSecret length] == 0 || [TransloaditTemplateId length] == 0) {
 		UIAlertView *error = [[UIAlertView alloc] initWithTitle:NSLocalizedString(@"Bad config", @"") message:NSLocalizedString(@"Please edit the Config.h file and insert your transloadit credentials.", @"") delegate:nil cancelButtonTitle:NSLocalizedString(@"Ok", @"") otherButtonTitles:nil];
 		[error show];
